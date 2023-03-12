@@ -45,11 +45,44 @@ pub fn generatePluginEntryPoint(exe: *std.build.LibExeObjStep, allocator: std.me
     PluginFile.close();
 }
 
+fn addPluginDependencies(exe: *std.build.LibExeObjStep, plugin_path: []const u8, allocator: std.mem.Allocator) void {
+    const deps_file_path = errorCheck([]const u8, "Cannot generate the sysdeps file path!", std.mem.concat(allocator, u8, &[_][]const u8{ plugin_path, "/.deps" }), .{});
+    var file = std.fs.openFileAbsolute(deps_file_path, .{});
+    defer file.close();
+
+    var buf_reader = std.io.bufferedReader(file.reader());
+    var in_stream = buf_reader.reader();
+
+    // A line should never be longer than 255 characters
+    var buf: [255]u8 = undefined;
+    while (errorCheck([]const u8, "Could not read line!", in_stream.readUntilDelimiterOrEof(&buf, '\n'), .{})) |line| {
+        var packageName = errorCheck([]const u8, "Cannot allocate!", allocator.alloc(u8, 0), .{});
+        var packagePath = errorCheck([]const u8, "Cannot allocate!", allocator.alloc(u8, 0), .{});
+
+        var i: u8 = 0;
+        while ((line[i] == ' ' or line[i] == '\t') and i < line.len) : (i += 1) {}
+
+        while ((line[i] != ':' or line[i] == ' ' or line[i] == '\t') and i < line.len) : (i += 1) {
+            var tmp = packageName;
+            defer allocator.free(tmp);
+            errorCheck([]const u8, "Cannot append to the Package Name", std.mem.concat(allocator, u8, &[_][]const u8{ tmp, [1]u8{line[i]} }), .{});
+        }
+
+        while ((line[i] == ' ' or line[i] == '\t' or line[i] == ':') and i < line.len) : (i += 1) {}
+
+        while ((line[i] != ' ' or line[i] != '\t') and i < line.len) : (i += 1) {
+            errorCheck([]const u8, "Cannot append to the Package Path", std.mem.concat(allocator, u8, &[_][]const u8{ tmp, [1]u8{line[i]} }), .{});
+        }
+
+        exe.addPackagePath(packageName, packagePath);
+    }
+}
+
 /// Creates an empty plugins.zig file.
 fn createPluginFile() std.fs.File {
-    return std.fs.cwd().createFile("src/plugins.zig", .{}) catch {
-        _ = errorCheck(void, "Can not delete the src/plugins.zig file!", std.fs.cwd().deleteFile("src/plugins.zig"), .{});
-        return errorCheck(std.fs.File, "Can not create the src/plugins.zig file!", std.fs.cwd().createFile("src/plugins.zig", .{}), .{});
+    return std.fs.cwd().createFile("exe/plugins.zig", .{}) catch {
+        _ = errorCheck(void, "Can not delete the exe/plugins.zig file!", std.fs.cwd().deleteFile("exe/plugins.zig"), .{});
+        return errorCheck(std.fs.File, "Can not create the exe/plugins.zig file!", std.fs.cwd().createFile("exe/plugins.zig", .{}), .{});
     };
 }
 
